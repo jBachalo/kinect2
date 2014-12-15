@@ -31,10 +31,23 @@ namespace NodeKinect2
             return instance.OpenDepthReader(input);
         }
 
+        public async Task<object> OpenBodyIndexReader(dynamic input)
+        {
+            return instance.OpenBodyIndexReader(input);
+        }
+
+        // this.bodyIndexFrameReader = this.kinectSensor.BodyIndexFrameSource.OpenReader();
+
+
+
+
+
         public async Task<object> OpenBodyReader(dynamic input)
         {
             return instance.OpenBodyReader(input);
         }
+
+       
 
         public async Task<object> OpenColorReader(dynamic input)
         {
@@ -64,11 +77,30 @@ namespace NodeKinect2
         private FrameDescription depthFrameDescription = null;
         private DepthFrameReader depthFrameReader = null;
 
+        private FrameDescription bodyIndexFrameDescription = null;
+        private BodyIndexFrameReader bodyIndexFrameReader = null;
         /// <summary>
         /// Map depth range to byte range
         /// </summary>
         private const int MapDepthToByte = 8000 / 256;
         private byte[] depthPixels = null;
+
+       // private byte[] bodyIndexPixels = null;
+        private uint[] bodyIndexPixels = null;
+
+        /// <summary>
+        /// Collection of colors to be used to display the BodyIndexFrame data.
+        /// </summary>
+        private static readonly uint[] BodyColor =
+        {
+            0x0000FF00,
+            0x00FF0000,
+            0xFFFF4000,
+            0x40FFFF00,
+            0xFF40FF00,
+            0xFF808000,
+        };
+
         private bool processingDepthFrame = false;
 
         private ColorFrameReader colorFrameReader = null;
@@ -109,10 +141,12 @@ namespace NodeKinect2
         private CoordinateMapper coordinateMapper = null;
 
         private BodyFrameReader bodyFrameReader = null;
+        
         private Body[] bodies = null;
 
         private Func<object, Task<object>> logCallback;
         private Func<object, Task<object>> bodyFrameCallback;
+        private Func<object, Task<object>> bodyIndexFrameCallback;
         private Func<object, Task<object>> depthFrameCallback;
         private Func<object, Task<object>> colorFrameCallback;
         private Func<object, Task<object>> infraredFrameCallback;
@@ -155,6 +189,32 @@ namespace NodeKinect2
             this.depthFrameReader = this.kinectSensor.DepthFrameSource.OpenReader();
             this.depthFrameReader.FrameArrived += this.DepthReader_FrameArrived;
             this.depthPixels = new byte[this.depthFrameDescription.Width * this.depthFrameDescription.Height];
+            return true;
+        }
+
+
+
+
+        public async Task<object> OpenBodyIndexReader(dynamic input)
+        {
+            this.logCallback("OpenBodyIndexReader");
+            if (this.bodyIndexFrameReader != null)
+            {
+                return false;
+            }
+            this.bodyIndexFrameCallback = (Func<object, Task<object>>)input.bodyIndexFrameCallback;//bodyIndexFrameCallback
+
+            this.bodyIndexFrameDescription = this.kinectSensor.BodyIndexFrameSource.FrameDescription;
+            
+            this.bodyIndexFrameReader = this.kinectSensor.BodyIndexFrameSource.OpenReader();
+
+            // // this.bodyIndexFrameReader = this.kinectSensor.BodyIndexFrameSource.OpenReader();
+            this.bodyIndexFrameReader.FrameArrived += this.BodyIndexReader_FrameArrived;            // 
+
+            // allocate space to put the pixels being converted
+           // this.bodyIndexPixels = new byte[this.bodyIndexFrameDescription.Width * this.bodyIndexFrameDescription.Height];
+
+            this.bodyIndexPixels = new uint[this.bodyIndexFrameDescription.Width * this.bodyIndexFrameDescription.Height];
             return true;
         }
 
@@ -229,12 +289,22 @@ namespace NodeKinect2
             return true;
         }
 
+       
+
+       
+
         public async Task<object> Close(object input)
         {
             if (this.depthFrameReader != null)
             {
                 this.depthFrameReader.Dispose();
                 this.depthFrameReader = null;
+            }
+
+            if (this.bodyIndexFrameReader != null)
+            {
+                this.bodyIndexFrameReader.Dispose();
+                this.bodyIndexFrameReader = null;
             }
 
             if (this.colorFrameReader != null)
@@ -261,6 +331,8 @@ namespace NodeKinect2
                 this.bodyFrameReader = null;
             }
 
+            
+
             if (this.kinectSensor != null)
             {
                 this.kinectSensor.Close();
@@ -268,6 +340,8 @@ namespace NodeKinect2
             }
             return true;
         }
+
+
 
         private void DepthReader_FrameArrived(object sender, DepthFrameArrivedEventArgs e)
         {
@@ -338,6 +412,90 @@ namespace NodeKinect2
                 this.depthPixels[i] = (byte)(depth >= minDepth && depth <= maxDepth ? (depth / MapDepthToByte) : 0);
             }
         }
+
+
+        /// <summary>
+        /// Handles the body index frame data arriving from the sensor
+        /// </summary>
+        /// <param name="sender">object sending the event</param>
+        /// <param name="e">event arguments</param>
+        private void BodyIndexReader_FrameArrived(object sender, BodyIndexFrameArrivedEventArgs e)
+        {
+            bool bodyIndexFrameProcessed = false;
+
+            using (BodyIndexFrame bodyIndexFrame = e.FrameReference.AcquireFrame())
+            {
+                if (bodyIndexFrame != null)
+                {
+                    // the fastest way to process the body index data is to directly access 
+                    // the underlying buffer
+                    using (Microsoft.Kinect.KinectBuffer bodyIndexBuffer = bodyIndexFrame.LockImageBuffer())
+                    {
+                        // verify data and write the color data to the display bitmap
+                        //&&(this.bodyIndexFrameDescription.Width == this.bodyIndexBitmap.PixelWidth) && (this.bodyIndexFrameDescription.Height == this.bodyIndexBitmap.PixelHeight))
+                        //maybe try / this.bodyIndexFrameDescription.BytesPerPixel
+                        if ((this.bodyIndexFrameDescription.Width * this.bodyIndexFrameDescription.Height) ==(bodyIndexBuffer.Size / this.bodyIndexFrameDescription.BytesPerPixel)) 
+                        {
+                            this.ProcessBodyIndexFrameData(bodyIndexBuffer.UnderlyingBuffer, bodyIndexBuffer.Size);
+                            bodyIndexFrameProcessed = true;
+                        }
+                    }
+                }
+            }
+
+            if (bodyIndexFrameProcessed)
+            {
+                this.bodyIndexFrameCallback(this.bodyIndexPixels);
+               // this.RenderBodyIndexPixels();
+            }
+        }
+
+        /// <summary>
+        /// Directly accesses the underlying image buffer of the BodyIndexFrame to 
+        /// create a displayable bitmap.
+        /// This function requires the /unsafe compiler option as we make use of direct
+        /// access to the native memory pointed to by the bodyIndexFrameData pointer.
+        /// </summary>
+        /// <param name="bodyIndexFrameData">Pointer to the BodyIndexFrame image data</param>
+        /// <param name="bodyIndexFrameDataSize">Size of the BodyIndexFrame image data</param>
+        private unsafe void ProcessBodyIndexFrameData(IntPtr bodyIndexFrameData, uint bodyIndexFrameDataSize)
+        {
+            byte* frameData = (byte*)bodyIndexFrameData;
+
+           // uint* frameData = (uint*)bodyIndexFrameData;
+
+            // convert body index to a visual representation
+           // for (int i = 0; i < (int)bodyIndexFrameDataSize; ++i)
+                for (uint i = 0; i < (uint)bodyIndexFrameDataSize; ++i)
+            {
+                // the BodyColor array has been sized to match
+                // BodyFrameSource.BodyCount
+                if (frameData[i] < BodyColor.Length)
+                {
+                    // this pixel is part of a player,
+                    // display the appropriate color
+                    this.bodyIndexPixels[i] = BodyColor[frameData[i]];
+                }
+                else
+                {
+                    // this pixel is not part of a player
+                    // display black
+                    this.bodyIndexPixels[i] = 0x00000000;
+                }
+            }
+        }
+
+
+
+
+
+
+
+
+
+
+
+
 
         private void ColorReader_ColorFrameArrived(object sender, ColorFrameArrivedEventArgs e)
         {
@@ -505,5 +663,9 @@ namespace NodeKinect2
                 this.bodyFrameCallback(jsBodies);
             }
         }
+
+
+
+        
     }
 }

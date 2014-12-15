@@ -15,7 +15,8 @@ function Kinect2(options) {
 	this.edge = {};
 	this.edge.create = edge.func(_.assign({}, dllProperties));
 	this.edge.open = edge.func(_.assign({ methodName: 'Open' }, dllProperties));
-	this.edge.openDepthReader =edge.func( _.assign({ methodName: 'OpenDepthReader' }, dllProperties));
+	this.edge.openDepthReader = edge.func(_.assign({ methodName: 'OpenDepthReader' }, dllProperties));
+	this.edge.openBodyIndexReader = edge.func(_.assign({ methodName: 'OpenBodyIndexReader' }, dllProperties));
 	this.edge.openColorReader = edge.func(_.assign({ methodName: 'OpenColorReader' }, dllProperties));
 	this.edge.openInfraredReader = edge.func(_.assign({ methodName: 'OpenInfraredReader' }, dllProperties));
 	this.edge.openLongExposureInfraredReader = edge.func(_.assign({ methodName: 'OpenLongExposureInfraredReader' }, dllProperties));
@@ -37,6 +38,12 @@ Kinect2.prototype.openDepthReader = function() {
 	return this.edge.openDepthReader({
 		depthFrameCallback: this.depthFrameCallback.bind(this)
 	}, true);
+};
+
+Kinect2.prototype.openBodyIndexReader = function () {
+    return this.edge.openBodyIndexReader({
+        bodyIndexFrameCallback: this.bodyIndexFrameCallback.bind(this)
+    }, true);
 };
 
 Kinect2.prototype.openColorReader = function() {
@@ -77,6 +84,10 @@ Kinect2.prototype.bodyFrameCallback = function(input, callback) {
 
 Kinect2.prototype.depthFrameCallback = function(data) {
 	this.emit('depthFrame', data);
+};
+
+Kinect2.prototype.bodyIndexFrameCallback = function (data) {
+    this.emit('bodyIndexFrame', data);
 };
 
 Kinect2.prototype.colorFrameCallback = function(data) {

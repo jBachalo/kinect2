@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
 	<meta charset="utf-8">
@@ -30,7 +30,7 @@
 			"imageData": ctx.createImageData(canvas.width, canvas.height)
 		});
 
-		socket.on('depthFrame', function(imageBuffer){
+		socket.on('bodyIndexFrame', function(imageBuffer){
 			if(!imageProcessing) {
 				imageProcessing = true;
 				imageWorkerThread.postMessage({ "message": "processImageData", "imageBuffer": imageBuffer });
